@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sanity"
+version = "0.1.0"
+description = "Pre-commit risk checker for AI-generated code changes"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Jinang"}]
+
+dependencies = [
+    "click>=8.1",
+    "gitpython>=3.1",
+    "python-dotenv>=1.0",
+    "groq>=0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+]
+
+[project.scripts]
+sanity = "sanity.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
