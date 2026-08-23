@@ -1,4 +1,6 @@
+import math
 import re
+from collections import Counter
 
 from sanity.config import IGNORE_MARKER, SanityConfig
 from sanity.models import CheckResult, DiffResult
@@ -72,6 +74,7 @@ def check_deletion_ratio(diff: DiffResult, threshold: float = 3.0) -> CheckResul
 SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("AWS access key", re.compile(r"AKIA[0-9A-Z]{16}")),
     ("AWS secret key", re.compile(r"(?i)(aws_secret_access_key|aws_secret)\s*[=:]\s*\S{20,}")),
+    ("Stripe API key", re.compile(r"(?i)(sk_live_|sk_test_|pk_live_|pk_test_)[A-Za-z0-9]{20,}")),
     ("Private key header", re.compile(r"-----BEGIN\s+(RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----")),
     ("Generic API key assignment", re.compile(r"(?i)(api[_-]?key|apikey|api[_-]?secret)\s*[=:]\s*['\"]?[A-Za-z0-9_\-]{16,}['\"]?")),
     ("Generic secret assignment", re.compile(r"(?i)(secret[_-]?key|secret)\s*[=:]\s*['\"]?[A-Za-z0-9_\-]{16,}['\"]?")),
@@ -127,13 +130,45 @@ def check_dangerous_commands(
     diff: DiffResult,
     config: SanityConfig | None = None,
 ) -> CheckResult:
-    added_lines = _extract_added_lines(diff, config)
+    cfg = config or SanityConfig()
     findings: list[str] = []
 
-    for file_path, line in added_lines:
-        for pattern_name, pattern in DANGEROUS_PATTERNS:
-            if pattern.search(line):
-                findings.append(f"{pattern_name} in {file_path}")
+    standard_patterns = [p for p in DANGEROUS_PATTERNS if p[0] != "DELETE without WHERE"]
+
+    for f in diff.files:
+        if cfg.is_excluded(f.path):
+            continue
+
+        lines = f.diff_text.splitlines()
+        for i, line in enumerate(lines):
+            if line.startswith("+") and not line.startswith("+++"):
+                content = line[1:]
+                if IGNORE_MARKER in content:
+                    continue
+
+                for pattern_name, pattern in standard_patterns:
+                    if pattern.search(content):
+                        findings.append(f"{pattern_name} in {f.path}")
+
+                match = re.search(r"(?i)\bDELETE\s+FROM\s+\w+", content)
+                if match:
+                    has_where = False
+                    if re.search(r"(?i)\bWHERE\b", content[match.end():]):
+                        has_where = True
+                    else:
+                        for j in range(i + 1, min(i + 10, len(lines))):
+                            next_line = lines[j]
+                            if next_line.startswith(("-", "---")):
+                                continue
+                            if next_line.startswith(("+", " ")):
+                                next_content = next_line[1:]
+                                if re.search(r"(?i)\bWHERE\b", next_content):
+                                    has_where = True
+                                    break
+                                if ";" in next_content:
+                                    break
+                    if not has_where:
+                        findings.append(f"DELETE without WHERE in {f.path}")
 
     if findings:
         detail = "; ".join(findings[:5])
@@ -153,6 +188,74 @@ def check_dangerous_commands(
     )
 
 
+def shannon_entropy(s: str) -> float:
+    if not s:
+        return 0.0
+    freqs = Counter(s)
+    entropy = 0.0
+    for count in freqs.values():
+        p = count / len(s)
+        entropy -= p * math.log2(p)
+    return entropy
+
+
+def looks_like_high_entropy_secret(s: str, threshold: float = 3.8) -> bool:
+    if len(s) < 20:
+        return False
+    if " " in s:
+        return False
+
+    lower = s.lower()
+    placeholders = ["your", "here", "xxx", "changeme", "example", "placeholder", "insert", "dummy", "key", "token"]
+    if any(p in lower for p in placeholders):
+        return False
+
+    return shannon_entropy(s) > threshold
+
+
+def check_high_entropy_secrets(
+    diff: DiffResult,
+    config: SanityConfig | None = None,
+) -> CheckResult:
+    cfg = config or SanityConfig()
+    added_lines = _extract_added_lines(diff, cfg)
+    findings: list[str] = []
+
+    threshold = cfg.entropy_threshold
+
+    pattern = re.compile(
+        r"(?i)(?:['\"]?)\b([a-z0-9_]*(?:key|token|secret|password|credential|api|auth)[a-z0-9_]*)\b(?:['\"]?)\s*[=:]\s*(['\"])([^'\"]{20,})\2"
+    )
+
+    for file_path, line in added_lines:
+        if any(p.search(line) for _, p in SECRET_PATTERNS):
+            continue
+
+        for match in pattern.finditer(line):
+            val = match.group(3)
+            if looks_like_high_entropy_secret(val, threshold):
+                var_name = match.group(1)
+                findings.append(f"High entropy secret ({var_name}) in {file_path}")
+                break
+
+    if findings:
+        detail = "; ".join(findings[:5])
+        extra = f" (+{len(findings) - 5} more)" if len(findings) > 5 else ""
+        return CheckResult(
+            check_name="high_entropy_secrets",
+            passed=False,
+            severity="HIGH",
+            reason=f"Potential high-entropy secrets detected: {detail}{extra}",
+        )
+
+    return CheckResult(
+        check_name="high_entropy_secrets",
+        passed=True,
+        severity="LOW",
+        reason="No high-entropy secrets detected.",
+    )
+
+
 def run_all_checks(
     diff: DiffResult,
     config: SanityConfig | None = None,
@@ -165,6 +268,9 @@ def run_all_checks(
 
     if "secret_detection" not in cfg.disabled_checks:
         results.append(check_secrets(diff, config=cfg))
+
+    if "high_entropy_secrets" not in cfg.disabled_checks:
+        results.append(check_high_entropy_secrets(diff, config=cfg))
 
     if "dangerous_commands" not in cfg.disabled_checks:
         results.append(check_dangerous_commands(diff, config=cfg))

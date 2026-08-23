@@ -1,0 +1,156 @@
+warning: in the working copy of 'src/sanity/checks.py', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/src/sanity/checks.py b/src/sanity/checks.py[m
+[1mindex b4193af..1421f14 100644[m
+[1m--- a/src/sanity/checks.py[m
+[1m+++ b/src/sanity/checks.py[m
+[36m@@ -1,4 +1,6 @@[m
+[32m+[m[32mimport math[m
+ import re[m
+[32m+[m[32mfrom collections import Counter[m
+ [m
+ from sanity.config import IGNORE_MARKER, SanityConfig[m
+ from sanity.models import CheckResult, DiffResult[m
+[36m@@ -72,6 +74,7 @@[m [mdef check_deletion_ratio(diff: DiffResult, threshold: float = 3.0) -> CheckResul[m
+ SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [[m
+     ("AWS access key", re.compile(r"AKIA[0-9A-Z]{16}")),[m
+     ("AWS secret key", re.compile(r"(?i)(aws_secret_access_key|aws_secret)\s*[=:]\s*\S{20,}")),[m
+[32m+[m[32m    ("Stripe API key", re.compile(r"(?i)(sk_live_|sk_test_|pk_live_|pk_test_)[A-Za-z0-9]{20,}")),[m
+     ("Private key header", re.compile(r"-----BEGIN\s+(RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----")),[m
+     ("Generic API key assignment", re.compile(r"(?i)(api[_-]?key|apikey|api[_-]?secret)\s*[=:]\s*['\"]?[A-Za-z0-9_\-]{16,}['\"]?")),[m
+     ("Generic secret assignment", re.compile(r"(?i)(secret[_-]?key|secret)\s*[=:]\s*['\"]?[A-Za-z0-9_\-]{16,}['\"]?")),[m
+[36m@@ -127,13 +130,45 @@[m [mdef check_dangerous_commands([m
+     diff: DiffResult,[m
+     config: SanityConfig | None = None,[m
+ ) -> CheckResult:[m
+[31m-    added_lines = _extract_added_lines(diff, config)[m
+[32m+[m[32m    cfg = config or SanityConfig()[m
+     findings: list[str] = [][m
+ [m
+[31m-    for file_path, line in added_lines:[m
+[31m-        for pattern_name, pattern in DANGEROUS_PATTERNS:[m
+[31m-            if pattern.search(line):[m
+[31m-                findings.append(f"{pattern_name} in {file_path}")[m
+[32m+[m[32m    standard_patterns = [p for p in DANGEROUS_PATTERNS if p[0] != "DELETE without WHERE"][m
+[32m+[m
+[32m+[m[32m    for f in diff.files:[m
+[32m+[m[32m        if cfg.is_excluded(f.path):[m
+[32m+[m[32m            continue[m
+[32m+[m
+[32m+[m[32m        lines = f.diff_text.splitlines()[m
+[32m+[m[32m        for i, line in enumerate(lines):[m
+[32m+[m[32m            if line.startswith("+") and not line.startswith("+++"):[m
+[32m+[m[32m                content = line[1:][m
+[32m+[m[32m                if IGNORE_MARKER in content:[m
+[32m+[m[32m                    continue[m
+[32m+[m
+[32m+[m[32m                for pattern_name, pattern in standard_patterns:[m
+[32m+[m[32m                    if pattern.search(content):[m
+[32m+[m[32m                        findings.append(f"{pattern_name} in {f.path}")[m
+[32m+[m
+[32m+[m[32m                match = re.search(r"(?i)\bDELETE\s+FROM\s+\w+", content)[m
+[32m+[m[32m                if match:[m
+[32m+[m[32m                    has_where = False[m
+[32m+[m[32m                    if re.search(r"(?i)\bWHERE\b", content[match.end():]):[m
+[32m+[m[32m                        has_where = True[m
+[32m+[m[32m                    else:[m
+[32m+[m[32m                        for j in range(i + 1, min(i + 10, len(lines))):[m
+[32m+[m[32m                            next_line = lines[j][m
+[32m+[m[32m                            if next_line.startswith(("-", "---")):[m
+[32m+[m[32m                                continue[m
+[32m+[m[32m                            if next_line.startswith(("+", " ")):[m
+[32m+[m[32m                                next_content = next_line[1:][m
+[32m+[m[32m                                if re.search(r"(?i)\bWHERE\b", next_content):[m
+[32m+[m[32m                                    has_where = True[m
+[32m+[m[32m                                    break[m
+[32m+[m[32m                                if ";" in next_content:[m
+[32m+[m[32m                                    break[m
+[32m+[m[32m                    if not has_where:[m
+[32m+[m[32m                        findings.append(f"DELETE without WHERE in {f.path}")[m
+ [m
+     if findings:[m
+         detail = "; ".join(findings[:5])[m
+[36m@@ -153,6 +188,74 @@[m [mdef check_dangerous_commands([m
+     )[m
+ [m
+ [m
+[32m+[m[32mdef shannon_entropy(s: str) -> float:[m
+[32m+[m[32m    if not s:[m
+[32m+[m[32m        return 0.0[m
+[32m+[m[32m    freqs = Counter(s)[m
+[32m+[m[32m    entropy = 0.0[m
+[32m+[m[32m    for count in freqs.values():[m
+[32m+[m[32m        p = count / len(s)[m
+[32m+[m[32m        entropy -= p * math.log2(p)[m
+[32m+[m[32m    return entropy[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef looks_like_high_entropy_secret(s: str, threshold: float = 3.8) -> bool:[m
+[32m+[m[32m    if len(s) < 20:[m
+[32m+[m[32m        return False[m
+[32m+[m[32m    if " " in s:[m
+[32m+[m[32m        return False[m
+[32m+[m
+[32m+[m[32m    lower = s.lower()[m
+[32m+[m[32m    placeholders = ["your", "here", "xxx", "changeme", "example", "placeholder", "insert", "dummy", "key", "token"][m
+[32m+[m[32m    if any(p in lower for p in placeholders):[m
+[32m+[m[32m        return False[m
+[32m+[m
+[32m+[m[32m    return shannon_entropy(s) > threshold[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef check_high_entropy_secrets([m
+[32m+[m[32m    diff: DiffResult,[m
+[32m+[m[32m    config: SanityConfig | None = None,[m
+[32m+[m[32m) -> CheckResult:[m
+[32m+[m[32m    cfg = config or SanityConfig()[m
+[32m+[m[32m    added_lines = _extract_added_lines(diff, cfg)[m
+[32m+[m[32m    findings: list[str] = [][m
+[32m+[m
+[32m+[m[32m    threshold = cfg.entropy_threshold[m
+[32m+[m
+[32m+[m[32m    pattern = re.compile([m
+[32m+[m[32m        r"(?i)(?:['\"]?)\b([a-z0-9_]*(?:key|token|secret|password|credential|api|auth)[a-z0-9_]*)\b(?:['\"]?)\s*[=:]\s*(['\"])([^'\"]{20,})\2"[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    for file_path, line in added_lines:[m
+[32m+[m[32m        if any(p.search(line) for _, p in SECRET_PATTERNS):[m
+[32m+[m[32m            continue[m
+[32m+[m
+[32m+[m[32m        for match in pattern.finditer(line):[m
+[32m+[m[32m            val = match.group(3)[m
+[32m+[m[32m            if looks_like_high_entropy_secret(val, threshold):[m
+[32m+[m[32m                var_name = match.group(1)[m
+[32m+[m[32m                findings.append(f"High entropy secret ({var_name}) in {file_path}")[m
+[32m+[m[32m                break[m
+[32m+[m
+[32m+[m[32m    if findings:[m
+[32m+[m[32m        detail = "; ".join(findings[:5])[m
+[32m+[m[32m        extra = f" (+{len(findings) - 5} more)" if len(findings) > 5 else ""[m
+[32m+[m[32m        return CheckResult([m
+[32m+[m[32m            check_name="high_entropy_secrets",[m
+[32m+[m[32m            passed=False,[m
+[32m+[m[32m            severity="HIGH",[m
+[32m+[m[32m            reason=f"Potential high-entropy secrets detected: {detail}{extra}",[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m    return CheckResult([m
+[32m+[m[32m        check_name="high_entropy_secrets",[m
+[32m+[m[32m        passed=True,[m
+[32m+[m[32m        severity="LOW",[m
+[32m+[m[32m        reason="No high-entropy secrets detected.",[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m
+ def run_all_checks([m
+     diff: DiffResult,[m
+     config: SanityConfig | None = None,[m
+[36m@@ -166,6 +269,9 @@[m [mdef run_all_checks([m
+     if "secret_detection" not in cfg.disabled_checks:[m
+         results.append(check_secrets(diff, config=cfg))[m
+ [m
+[32m+[m[32m    if "high_entropy_secrets" not in cfg.disabled_checks:[m
+[32m+[m[32m        results.append(check_high_entropy_secrets(diff, config=cfg))[m
+[32m+[m
+     if "dangerous_commands" not in cfg.disabled_checks:[m
+         results.append(check_dangerous_commands(diff, config=cfg))[m
+ [m

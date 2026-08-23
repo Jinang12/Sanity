@@ -59,3 +59,23 @@ def print_check_results(results: list[CheckResult]) -> None:
         click.secho(f"  {failed} check(s) failed, {passed} passed.", fg="red", bold=True)
     click.echo()
 
+
+def print_final_decision(risk: str, is_forced: bool, overridden_checks: list[str]) -> None:
+    click.secho("+------------------------------------------+", fg="cyan")
+    if risk == "LOW":
+        click.secho("|       Overall risk: LOW -- commit allowed      |", fg="green", bold=True)
+    elif risk == "MEDIUM":
+        click.secho("|   Overall risk: MEDIUM -- commit allowed (see warnings)   |", fg="yellow", bold=True)
+    else:
+        if is_forced:
+            click.secho("|  Overall risk: HIGH -- commit allowed (--force used)  |", fg="red", bold=True)
+        else:
+            click.secho("| Overall risk: HIGH -- commit blocked. Use --force to override |", fg="red", bold=True)
+    click.secho("+------------------------------------------+", fg="cyan")
+    click.echo()
+
+    if risk == "HIGH" and is_forced:
+        click.secho(f"WARNING: You have forcibly overridden the following HIGH risk failures: {', '.join(overridden_checks)}", fg="red", bold=True, bg="yellow")
+        click.secho("This action has been logged for audit purposes.", fg="yellow")
+        click.echo()
+

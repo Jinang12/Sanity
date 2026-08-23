@@ -1,0 +1,136 @@
+import os
+from pathlib import Path
+
+from sanity.config import (
+    DEFAULT_EXCLUDE_PATTERNS,
+    IGNORE_MARKER,
+    SanityConfig,
+    load_config,
+)
+
+
+# -- SanityConfig.is_excluded tests --
+
+
+def test_excludes_test_files():
+    cfg = SanityConfig()
+    assert cfg.is_excluded("test_utils.py") is True
+    assert cfg.is_excluded("utils_test.py") is True
+
+
+def test_excludes_tests_directory():
+    cfg = SanityConfig()
+    assert cfg.is_excluded("tests/test_foo.py") is True
+    assert cfg.is_excluded("tests/unit/test_bar.py") is True
+
+
+def test_excludes_markdown_files():
+    cfg = SanityConfig()
+    assert cfg.is_excluded("README.md") is True
+    assert cfg.is_excluded("README.rst") is True  # README* matches this
+    assert cfg.is_excluded("CHANGELOG.md") is True
+    assert cfg.is_excluded("CHANGELOG") is True
+    assert cfg.is_excluded("docs/guide.md") is True
+
+
+def test_excludes_docs_directory():
+    cfg = SanityConfig()
+    assert cfg.is_excluded("docs/api.md") is True
+    assert cfg.is_excluded("docs/tutorial/step1.py") is True
+
+
+def test_excludes_examples_directory():
+    cfg = SanityConfig()
+    assert cfg.is_excluded("examples/demo.py") is True
+    assert cfg.is_excluded("examples/advanced/run.sh") is True
+
+
+def test_does_not_exclude_source_files():
+    cfg = SanityConfig()
+    assert cfg.is_excluded("src/app.py") is False
+    assert cfg.is_excluded("config.py") is False
+    assert cfg.is_excluded("main.py") is False
+    assert cfg.is_excluded(".env") is False
+    assert cfg.is_excluded("deploy.sh") is False
+
+
+def test_custom_exclude_patterns():
+    cfg = SanityConfig(exclude_patterns=["vendor/**", "*.generated.py"])
+    assert cfg.is_excluded("vendor/lib/util.py") is True
+    assert cfg.is_excluded("output.generated.py") is True
+    assert cfg.is_excluded("src/app.py") is False
+    # Default patterns NOT present when overriding completely
+    assert cfg.is_excluded("test_foo.py") is False
+
+
+def test_empty_exclude_patterns():
+    cfg = SanityConfig(exclude_patterns=[])
+    assert cfg.is_excluded("test_foo.py") is False
+    assert cfg.is_excluded("README.md") is False
+
+
+def test_backslash_normalization():
+    cfg = SanityConfig()
+    assert cfg.is_excluded("tests\\test_foo.py") is True
+    assert cfg.is_excluded("docs\\guide.md") is True
+
+
+# -- load_config tests --
+
+
+def test_load_config_defaults(tmp_path):
+    cfg = load_config(str(tmp_path))
+    assert cfg.exclude_patterns == list(DEFAULT_EXCLUDE_PATTERNS)
+    assert cfg.disabled_checks == []
+    assert cfg.deletion_ratio_threshold == 3.0
+
+
+def test_load_config_from_pyproject(tmp_path):
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[tool.sanity]\n'
+        'exclude = ["vendor/**"]\n'
+        'deletion_ratio_threshold = 5.0\n'
+        'disabled_checks = ["secret_detection"]\n'
+    )
+    cfg = load_config(str(tmp_path))
+    assert "vendor/**" in cfg.exclude_patterns
+    # Defaults are still present
+    assert "test_*.py" in cfg.exclude_patterns
+    assert cfg.deletion_ratio_threshold == 5.0
+    assert "secret_detection" in cfg.disabled_checks
+
+
+def test_load_config_from_sanityrc(tmp_path):
+    rc = tmp_path / ".sanityrc"
+    rc.write_bytes(b'exclude = ["custom/**"]\n')
+    cfg = load_config(str(tmp_path))
+    assert "custom/**" in cfg.exclude_patterns
+    assert "test_*.py" in cfg.exclude_patterns
+
+
+def test_sanityrc_takes_priority_over_pyproject(tmp_path):
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text('[tool.sanity]\ndeletion_ratio_threshold = 10.0\n')
+    rc = tmp_path / ".sanityrc"
+    rc.write_bytes(b'deletion_ratio_threshold = 2.0\n')
+    cfg = load_config(str(tmp_path))
+    assert cfg.deletion_ratio_threshold == 2.0
+
+
+def test_load_config_exclude_override(tmp_path):
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        '[tool.sanity]\n'
+        'exclude_override = ["only_this/**"]\n'
+    )
+    cfg = load_config(str(tmp_path))
+    assert cfg.exclude_patterns == ["only_this/**"]
+    assert "test_*.py" not in cfg.exclude_patterns
+
+
+# -- IGNORE_MARKER constant --
+
+
+def test_ignore_marker_value():
+    assert IGNORE_MARKER == "# sanity: ignore"

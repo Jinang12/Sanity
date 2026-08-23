@@ -28,6 +28,7 @@ class SanityConfig:
     exclude_patterns: list[str] = field(default_factory=lambda: list(DEFAULT_EXCLUDE_PATTERNS))
     disabled_checks: list[str] = field(default_factory=list)
     deletion_ratio_threshold: float = 3.0
+    entropy_threshold: float = 3.8
 
     def is_excluded(self, file_path: str) -> bool:
         normalized = file_path.replace("\\", "/")
@@ -91,6 +92,12 @@ def load_config(project_dir: str | None = None) -> SanityConfig:
     if "deletion_ratio_threshold" in raw:
         try:
             config.deletion_ratio_threshold = float(raw["deletion_ratio_threshold"])
+        except (ValueError, TypeError):
+            pass
+
+    if "entropy_threshold" in raw:
+        try:
+            config.entropy_threshold = float(raw["entropy_threshold"])
         except (ValueError, TypeError):
             pass
 
