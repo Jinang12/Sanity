@@ -155,10 +155,11 @@ def test_check_scope_missing_api_key(mock_load, monkeypatch):
     assert result is None
 
 
+@patch("sanity.snapshot.create_snapshot")
 @patch("sanity.diff.get_staged_diff")
 @patch("sanity.llm_check.check_scope")
 @patch("sanity.cli.Path")
-def test_cli_skips_scope_when_no_task(mock_path, mock_check_scope, mock_get_diff):
+def test_cli_skips_scope_when_no_task(mock_path, mock_check_scope, mock_get_diff, mock_create):
     # Mocking diff with some changes so it doesn't exit early
     diff = DiffResult([FileDiff("a.py", False, False, False, None, 1, 0, "+a")], 1, 0)
     mock_get_diff.return_value = diff
@@ -175,9 +176,10 @@ def test_cli_skips_scope_when_no_task(mock_path, mock_check_scope, mock_get_diff
     mock_check_scope.assert_not_called()
 
 
+@patch("sanity.snapshot.create_snapshot")
 @patch("sanity.diff.get_staged_diff")
 @patch("sanity.llm_check.check_scope")
-def test_cli_skips_scope_when_static_check_fails_high(mock_check_scope, mock_get_diff):
+def test_cli_skips_scope_when_static_check_fails_high(mock_check_scope, mock_get_diff, mock_create):
     # Create a diff that definitely triggers a HIGH static failure (pure deletion)
     diff = DiffResult([FileDiff("a.py", False, False, False, None, 0, 100, "-old")], 0, 100)
     mock_get_diff.return_value = diff
@@ -189,9 +191,10 @@ def test_cli_skips_scope_when_static_check_fails_high(mock_check_scope, mock_get
     mock_check_scope.assert_not_called()
 
 
+@patch("sanity.snapshot.create_snapshot")
 @patch("sanity.diff.get_staged_diff")
 @patch("sanity.llm_check.check_scope")
-def test_cli_runs_scope_with_task_arg(mock_check_scope, mock_get_diff):
+def test_cli_runs_scope_with_task_arg(mock_check_scope, mock_get_diff, mock_create):
     diff = DiffResult([FileDiff("a.py", False, False, False, None, 1, 0, "+a")], 1, 0)
     mock_get_diff.return_value = diff
     

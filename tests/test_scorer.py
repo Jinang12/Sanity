@@ -37,9 +37,10 @@ def test_log_override(tmp_path):
         assert "timestamp" in data
 
 
+@patch("sanity.snapshot.create_snapshot")
 @patch("sanity.diff.get_staged_diff")
 @patch("sanity.checks.run_all_checks")
-def test_cli_high_risk_blocks_without_force(mock_run_checks, mock_get_diff):
+def test_cli_high_risk_blocks_without_force(mock_run_checks, mock_get_diff, mock_create):
     diff = DiffResult([FileDiff("a.py", False, False, False, None, 1, 0, "+a")], 1, 0)
     mock_get_diff.return_value = diff
     
@@ -52,10 +53,11 @@ def test_cli_high_risk_blocks_without_force(mock_run_checks, mock_get_diff):
     assert "Overall risk: HIGH -- commit blocked. Use --force to override" in result.output
 
 
+@patch("sanity.snapshot.create_snapshot")
 @patch("sanity.diff.get_staged_diff")
 @patch("sanity.checks.run_all_checks")
 @patch("sanity.scorer.log_override")
-def test_cli_high_risk_allowed_with_force(mock_log, mock_run_checks, mock_get_diff):
+def test_cli_high_risk_allowed_with_force(mock_log, mock_run_checks, mock_get_diff, mock_create):
     diff = DiffResult([FileDiff("a.py", False, False, False, None, 1, 0, "+a")], 1, 0)
     mock_get_diff.return_value = diff
     

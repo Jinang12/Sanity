@@ -70,6 +70,28 @@ def check(task: str | None, force: bool) -> None:
     if risk == "HIGH" and not force:
         raise SystemExit(1)
 
+    from sanity.snapshot import create_snapshot
+    create_snapshot(diff_result, risk)
+
+
+@main.command()
+@click.argument("identifier", required=False)
+@click.option("--list", "list_only", is_flag=True, help="List recent snapshots.")
+@click.option("--prune", is_flag=True, help="Remove snapshots older than 30 days.")
+def rollback(identifier: str | None, list_only: bool, prune: bool) -> None:
+    """List, restore, or prune git snapshots created by Sanity."""
+    from sanity.snapshot import list_snapshots, prune_snapshots, rollback_snapshot
+
+    if prune:
+        prune_snapshots()
+        return
+
+    if list_only or not identifier:
+        list_snapshots()
+        return
+
+    rollback_snapshot(identifier)
+
 
 if __name__ == "__main__":
     main()
