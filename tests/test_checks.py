@@ -111,7 +111,7 @@ def test_secrets_passes_clean_diff():
 
 def test_secrets_detects_aws_access_key():
     diff = _make_diff(
-        "+AWS_KEY = AKIAIOSFODNN7EXAMPLE",
+        "+AWS_KEY = AKIA0123456789ABCDEF",
         path="config.py",
         added=1,
     )
@@ -124,7 +124,7 @@ def test_secrets_detects_aws_access_key():
 
 def test_secrets_detects_generic_api_key():
     diff = _make_diff(
-        "+api_key = sk_live_abc123def456ghi789jkl012mno345",
+        "+api_key = sk_live_0000000000000000000000000000",
         path="settings.py",
         added=1,
     )
@@ -135,7 +135,7 @@ def test_secrets_detects_generic_api_key():
 
 def test_secrets_detects_private_key():
     diff = _make_diff(
-        "+-----BEGIN RSA PRIVATE KEY-----\n+MIIEpAIBAAKCAQEA0Z...",
+        "+-----BEGIN RSA PRIVATE KEY-----\n+FAKE00000000000000...",
         path="id_rsa",
         added=2,
     )
@@ -146,7 +146,7 @@ def test_secrets_detects_private_key():
 
 def test_secrets_detects_generic_token():
     diff = _make_diff(
-        "+access_token = ghp_abcdefghijklmnopqrstuvwx1234567890",
+        "+access_token = ghp_0000000000000000000000000000000000",
         path=".env",
         added=1,
     )
@@ -157,7 +157,7 @@ def test_secrets_detects_generic_token():
 
 def test_secrets_detects_password():
     diff = _make_diff(
-        "+password = SuperSecret123!@#Extra",
+        "+password = FakePassword123!@#Extra",
         path="config.yml",
         added=1,
     )
@@ -168,7 +168,7 @@ def test_secrets_detects_password():
 
 def test_secrets_detects_connection_string():
     diff = _make_diff(
-        "+DATABASE_URL = postgres://admin:s3cret@db.example.com:5432/prod",
+        "+DATABASE_URL = postgres://admin:FakePassword@db.example.com:5432/prod",
         path="docker-compose.yml",
         added=1,
     )
@@ -178,7 +178,7 @@ def test_secrets_detects_connection_string():
 
 def test_secrets_ignores_deleted_lines():
     diff = _make_diff(
-        "-api_key = sk_live_abc123def456ghi789jkl012mno345\n+# key removed",
+        "-api_key = sk_live_0000000000000000000000000000\n+# key removed",
         path="settings.py",
         added=1,
         deleted=1,
@@ -189,7 +189,7 @@ def test_secrets_ignores_deleted_lines():
 
 def test_secrets_detects_aws_secret_key():
     diff = _make_diff(
-        "+aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        "+aws_secret_access_key = 0000000000000000000000000000000000000000",
         path="credentials",
         added=1,
     )
@@ -321,7 +321,7 @@ def test_run_all_checks_clean_diff():
 
 def test_run_all_checks_multiple_failures():
     diff = _make_diff(
-        "+api_key = sk_live_abc123def456ghi789jkl012mno345\n"
+        "+api_key = sk_live_0000000000000000000000000000\n"
         "+os.remove('/etc/passwd')",
         path="bad.py",
         added=2,
@@ -352,7 +352,7 @@ def test_run_all_checks_returns_correct_types():
 def test_secrets_skips_excluded_test_files():
     """A secret in a test file should be ignored when config has default excludes."""
     diff = _make_diff(
-        "+api_key = sk_live_abc123def456ghi789jkl012mno345",
+        "+api_key = sk_live_0000000000000000000000000000",
         path="tests/test_auth.py",
         added=1,
     )
@@ -363,7 +363,7 @@ def test_secrets_skips_excluded_test_files():
 
 def test_secrets_skips_readme():
     diff = _make_diff(
-        "+api_key = sk_live_abc123def456ghi789jkl012mno345",
+        "+api_key = sk_live_0000000000000000000000000000",
         path="README.md",
         added=1,
     )
@@ -375,7 +375,7 @@ def test_secrets_skips_readme():
 def test_secrets_still_flags_source_files():
     """A real secret in a non-excluded source file must still be caught."""
     diff = _make_diff(
-        "+api_key = sk_live_abc123def456ghi789jkl012mno345",
+        "+api_key = sk_live_0000000000000000000000000000",
         path="src/config.py",
         added=1,
     )
@@ -410,7 +410,7 @@ def test_dangerous_commands_still_flags_scripts():
 def test_inline_ignore_skips_line():
     """A line with # sanity: ignore should not trigger any check."""
     diff = _make_diff(
-        "+api_key = sk_live_abc123def456ghi789jkl012mno345  # sanity: ignore",
+        "+api_key = sk_live_0000000000000000000000000000  # sanity: ignore",
         path="src/config.py",
         added=1,
     )
@@ -422,8 +422,8 @@ def test_inline_ignore_skips_line():
 def test_inline_ignore_only_affects_marked_line():
     """Only the marked line is skipped; other lines are still checked."""
     diff = _make_diff(
-        "+api_key = sk_live_abc123def456ghi789jkl012mno345  # sanity: ignore\n"
-        "+secret = abcdefghijklmnopqrstuvwxyz123456",
+        "+api_key = sk_live_0000000000000000000000000000  # sanity: ignore\n"
+        "+secret = 00000000000000000000000000000000",
         path="src/config.py",
         added=2,
     )
@@ -446,7 +446,7 @@ def test_inline_ignore_works_for_dangerous_commands():
 
 def test_run_all_checks_with_disabled_check():
     diff = _make_diff(
-        "+api_key = sk_live_abc123def456ghi789jkl012mno345",
+        "+api_key = sk_live_0000000000000000000000000000",
         path="src/config.py",
         added=1,
     )
@@ -461,7 +461,7 @@ def test_run_all_checks_with_disabled_check():
 def test_run_all_checks_with_config_excludes_test_files():
     """End-to-end: run_all_checks with default config skips test file secrets."""
     diff = _make_multi_file_diff([
-        ("tests/test_auth.py", "+api_key = AKIAIOSFODNN7EXAMPLE", 1, 0),
+        ("tests/test_auth.py", "+api_key = AKIA0123456789ABCDEF", 1, 0),
         ("src/app.py", "+import os\n+x = 1", 2, 0),
     ])
     cfg = SanityConfig()
@@ -475,7 +475,7 @@ def test_run_all_checks_with_config_excludes_test_files():
 
 def test_secrets_detects_stripe_key():
     diff = _make_diff(
-        "+stripe_key = 'sk_live_51H8xK2eZvKYlo2C0h3Jk9mN4pQ7rS8tU9vW0xY1zA2bC3dE4fG5hI6jK7lM8nO9pQ0rS1tU2vW3xY4z'",
+        "+stripe_key = 'sk_live_0000000000000000000000000000000000000000000000000000000000000000000000000000'",
         path="payments.py",
         added=1,
     )
@@ -512,7 +512,7 @@ def test_high_entropy_secrets_detects_generic_key():
     from sanity.checks import check_high_entropy_secrets
     # A fake key that is high entropy but doesn't match AWS/Stripe patterns
     diff = _make_diff(
-        '+firebase_auth_hash = "AIzaSyB-abcd1234efgh5678ijkl9012mnop3456"',
+        '+firebase_auth_hash = "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0"',
         path="config.py",
         added=1,
     )
