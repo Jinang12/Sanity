@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import sys
 
 from dotenv import load_dotenv
@@ -50,8 +51,26 @@ def summarize_diff(diff: DiffResult) -> str:
     return summary
 
 
+def _load_groq_env() -> None:
+    """Load .env from current working directory or git repo root, with override=False."""
+    cwd = Path.cwd()
+    env_file = cwd / ".env"
+    if env_file.is_file():
+        load_dotenv(dotenv_path=env_file, override=False)
+        return
+
+    curr = cwd
+    while curr != curr.parent:
+        if (curr / ".git").exists():
+            git_env = curr / ".env"
+            if git_env.is_file():
+                load_dotenv(dotenv_path=git_env, override=False)
+            return
+        curr = curr.parent
+
+
 def check_scope(diff: DiffResult, task_description: str) -> CheckResult | None:
-    load_dotenv()
+    _load_groq_env()
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         print("Warning: Scope check skipped (GROQ_API_KEY not found in environment).", file=sys.stderr)

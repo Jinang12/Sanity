@@ -206,3 +206,37 @@ def test_cli_runs_scope_with_task_arg(mock_check_scope, mock_get_diff, mock_crea
     assert result.exit_code == 0
     assert "Running LLM scope check..." in result.output
     mock_check_scope.assert_called_once()
+
+
+# -- Dotenv resolution tests --
+
+
+def test_load_groq_env_env_var_wins_over_dotenv(tmp_path, monkeypatch):
+    """Item 6: Shell environment variable takes precedence over .env file."""
+    from sanity.llm_check import _load_groq_env
+    monkeypatch.setenv("GROQ_API_KEY", "env_var_wins")
+    (tmp_path / ".env").write_text("GROQ_API_KEY=dotenv_loses\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    _load_groq_env()
+    assert os.getenv("GROQ_API_KEY") == "env_var_wins"
+
+
+def test_load_groq_env_uses_cwd_dotenv_when_env_unset(tmp_path, monkeypatch):
+    """Item 6: .env in cwd is loaded when environment variable is unset."""
+    from sanity.llm_check import _load_groq_env
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    (tmp_path / ".env").write_text("GROQ_API_KEY=from_cwd_dotenv\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    _load_groq_env()
+    assert os.getenv("GROQ_API_KEY") == "from_cwd_dotenv"
+
+
+def test_check_scope_missing_key_warning(tmp_path, monkeypatch, capsys):
+    """Item 6: When neither env var nor .env is set, prints warning to stderr and returns None."""
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    diff = DiffResult([], 0, 0)
+    result = check_scope(diff, "some task")
+    assert result is None
+    captured = capsys.readouterr()
+    assert "Warning: Scope check skipped (GROQ_API_KEY not found in environment)." in captured.err

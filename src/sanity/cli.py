@@ -38,23 +38,13 @@ def check(task: str | None, force: bool) -> None:
     
     if not has_high_failure:
         task_desc = task
-        if not task_desc:
-            commit_msg_path = Path(".git/COMMIT_EDITMSG")
-            if commit_msg_path.exists():
-                try:
-                    content = commit_msg_path.read_text(encoding="utf-8").strip()
-                    if content and not content.startswith("#"):
-                        task_desc = content
-                except Exception:
-                    pass
-                    
         if task_desc:
             click.echo("Running LLM scope check...")
             llm_result = check_scope(diff_result, task_desc)
             if llm_result:
                 results.append(llm_result)
         else:
-            click.echo("\nScope check skipped: no task description provided (use --task or a commit message).")
+            click.echo("\nScope check skipped: no task description provided (use --task).")
 
     print_check_results(results)
 
@@ -91,6 +81,93 @@ def rollback(identifier: str | None, list_only: bool, prune: bool) -> None:
         return
 
     rollback_snapshot(identifier)
+
+
+@main.command()
+def init() -> None:
+    """Install Sanity as a git pre-commit hook."""
+    import stat
+    import shutil
+    
+    git_dir = Path(".git")
+    if not git_dir.is_dir():
+        click.echo("Error: Not a git repository. Run this inside a git repo.")
+        raise SystemExit(1)
+        
+    hooks_dir = git_dir / "hooks"
+    hooks_dir.mkdir(exist_ok=True)
+    
+    hook_path = hooks_dir / "pre-commit"
+    if hook_path.exists():
+        content = hook_path.read_text(encoding="utf-8")
+        if "sanity check" in content:
+            click.echo("Sanity pre-commit hook is already installed.")
+            return
+        
+        click.echo("Warning: A pre-commit hook already exists.")
+        if click.confirm("Do you want to back it up (to pre-commit.backup) and overwrite it?"):
+            shutil.copy2(hook_path, hook_path.with_name("pre-commit.backup"))
+        else:
+            click.echo("Aborted.")
+            raise SystemExit(1)
+            
+    import sys
+    
+    executable = sys.executable.replace("\\", "/")
+    hook_script = f"#!/usr/bin/env bash\n# Sanity Pre-Commit Hook\n\n\"{executable}\" -m sanity.cli check\nif [ $? -ne 0 ]; then\n    exit 1\nfi\n"
+    hook_path.write_text(hook_script, encoding="utf-8")
+    
+    # Make executable
+    st = os.stat(hook_path)
+    os.chmod(hook_path, st.st_mode | stat.S_IEXEC)
+    
+    click.echo("Success: Sanity pre-commit hook installed at .git/hooks/pre-commit")
+
+
+@main.command()
+@click.option("--set", "set_val", type=str, help="Set a config value, e.g. deletion_ratio_threshold=4.0")
+def config(set_val: str | None) -> None:
+    """View or update Sanity configuration."""
+    from sanity.config import load_config, save_to_sanityrc, DEFAULT_EXCLUDE_PATTERNS
+    
+    if set_val:
+        if "=" not in set_val:
+            click.echo("Error: Invalid format. Use --set key=value")
+            raise SystemExit(1)
+            
+        key, val = set_val.split("=", 1)
+        key = key.strip()
+        val = val.strip()
+        
+        valid_keys = {"exclude", "exclude_override", "disabled_checks", "deletion_ratio_threshold", "entropy_threshold"}
+        if key not in valid_keys:
+            click.echo(f"Error: Unknown configuration key '{key}'. Valid keys are: {', '.join(valid_keys)}")
+            raise SystemExit(1)
+            
+        parsed_val: any = val
+        if key in ("deletion_ratio_threshold", "entropy_threshold"):
+            try:
+                parsed_val = float(val)
+            except ValueError:
+                click.echo(f"Error: '{val}' is not a valid number for {key}.")
+                raise SystemExit(1)
+        elif key in ("exclude", "exclude_override", "disabled_checks"):
+            parsed_val = [x.strip() for x in val.split(",") if x.strip()]
+            
+        save_to_sanityrc(key, parsed_val)
+        click.echo(f"Success: set {key} = {parsed_val} in .sanityrc")
+        return
+
+    cfg = load_config()
+    click.echo("--- Sanity Configuration ---")
+    click.echo(f"deletion_ratio_threshold: {cfg.deletion_ratio_threshold}")
+    click.echo(f"entropy_threshold: {cfg.entropy_threshold}")
+    click.echo(f"disabled_checks: {cfg.disabled_checks}")
+    click.echo(f"exclude_patterns: {cfg.exclude_patterns}")
+    if cfg.exclude_patterns != DEFAULT_EXCLUDE_PATTERNS:
+        click.echo("(Overrides are active)")
+    else:
+        click.echo("(Using default exclude patterns)")
 
 
 if __name__ == "__main__":

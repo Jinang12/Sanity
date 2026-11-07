@@ -134,3 +134,63 @@ def test_load_config_exclude_override(tmp_path):
 
 def test_ignore_marker_value():
     assert IGNORE_MARKER == "# sanity: ignore"
+
+
+# -- save_to_sanityrc and CLI tests --
+
+from click.testing import CliRunner
+from sanity.cli import main
+from sanity.config import save_to_sanityrc
+
+
+def test_save_to_sanityrc(tmp_path):
+    save_to_sanityrc("deletion_ratio_threshold", 4.0, str(tmp_path))
+    save_to_sanityrc("disabled_checks", ["a", "b"], str(tmp_path))
+    
+    rc_path = tmp_path / ".sanityrc"
+    assert rc_path.exists()
+    content = rc_path.read_text(encoding="utf-8")
+    assert "deletion_ratio_threshold = 4.0" in content
+    assert 'disabled_checks = ["a", "b"]' in content
+    
+    cfg = load_config(str(tmp_path))
+    assert cfg.deletion_ratio_threshold == 4.0
+    assert cfg.disabled_checks == ["a", "b"]
+    
+
+def test_save_to_sanityrc_fresh_file(tmp_path):
+    # User requirement: on a fresh .sanityrc, only the explicitly set key should be written, never defaults.
+    from sanity.config import save_to_sanityrc
+    
+    save_to_sanityrc("entropy_threshold", 4.0, str(tmp_path))
+    
+    rc_path = tmp_path / ".sanityrc"
+    content = rc_path.read_text(encoding="utf-8").strip()
+    
+    # It should only contain the single key we set
+    assert content == "entropy_threshold = 4.0"
+    assert "deletion_ratio_threshold" not in content
+
+
+def test_cli_config_display(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(main, ["config"])
+    assert result.exit_code == 0
+    assert "--- Sanity Configuration ---" in result.output
+    assert "deletion_ratio_threshold: 3.0" in result.output
+    
+
+def test_cli_config_set(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(main, ["config", "--set", "deletion_ratio_threshold=5.5"])
+    assert result.exit_code == 0
+    assert "Success: set deletion_ratio_threshold = 5.5" in result.output
+    
+    rc_path = tmp_path / ".sanityrc"
+    assert "deletion_ratio_threshold = 5.5" in rc_path.read_text()
+    
+    result = runner.invoke(main, ["config", "--set", "disabled_checks=foo, bar"])
+    assert result.exit_code == 0
+    assert "Success: set disabled_checks = ['foo', 'bar']" in result.output

@@ -20,6 +20,7 @@ DEFAULT_EXCLUDE_PATTERNS: list[str] = [
     "docs/**",
     "CHANGELOG*",
     "examples/**",
+    ".sanity/**",
 ]
 
 
@@ -31,9 +32,9 @@ class SanityConfig:
     entropy_threshold: float = 3.8
 
     def is_excluded(self, file_path: str) -> bool:
-        normalized = file_path.replace("\\", "/")
+        normalized = file_path.replace("\\", "/").removeprefix("./")
         for pattern in self.exclude_patterns:
-            pattern = pattern.replace("\\", "/")
+            pattern = pattern.replace("\\", "/").removeprefix("./")
             if fnmatch(normalized, pattern):
                 return True
             # Support "tests/**" matching "tests/foo.py"
@@ -102,3 +103,29 @@ def load_config(project_dir: str | None = None) -> SanityConfig:
             pass
 
     return config
+
+
+def save_to_sanityrc(key: str, value: any, project_dir: str | None = None) -> None:
+    project_dir = project_dir or os.getcwd()
+    
+    rc_path = Path(project_dir) / ".sanityrc"
+    for name in (".sanityrc", ".sanityrc.toml"):
+        p = Path(project_dir) / name
+        if p.exists():
+            rc_path = p
+            break
+            
+    raw = _load_from_sanityrc(project_dir)
+    raw[key] = value
+    
+    lines = []
+    for k, v in raw.items():
+        if isinstance(v, list):
+            formatted_list = ", ".join(f'"{str(item)}"' for item in v)
+            lines.append(f"{k} = [{formatted_list}]")
+        elif isinstance(v, float) or isinstance(v, int):
+            lines.append(f"{k} = {v}")
+        else:
+            lines.append(f'{k} = "{str(v)}"')
+            
+    rc_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

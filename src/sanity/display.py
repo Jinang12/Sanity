@@ -33,6 +33,28 @@ def print_diff_summary(diff: DiffResult) -> None:
     click.echo()
 
 
+def normalize_for_console(text: str) -> str:
+    """Normalize typographic quotes and dashes to ASCII, replacing other non-ASCII chars."""
+    replacements = {
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201a": "'",
+        "\u201b": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u201e": '"',
+        "\u201f": '"',
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2015": "-",
+        "\u2212": "-",
+        "\u2026": "...",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text.encode("ascii", errors="replace").decode("ascii")
+
+
 def print_check_results(results: list[CheckResult]) -> None:
     click.secho("+------------------------------------------+", fg="cyan")
     click.secho("|          Static Analysis Results          |", fg="cyan", bold=True)
@@ -48,15 +70,21 @@ def print_check_results(results: list[CheckResult]) -> None:
             icon = click.style("WARN", fg="yellow", bold=True)
 
         click.echo(f"  [{icon}] {r.check_name}")
-        click.echo(f"         {r.reason}")
+        click.echo(f"         {normalize_for_console(r.reason)}")
         click.echo()
 
     passed = sum(1 for r in results if r.passed)
-    failed = sum(1 for r in results if not r.passed)
-    if failed == 0:
+    failed = sum(1 for r in results if not r.passed and r.severity == "HIGH")
+    warnings = sum(1 for r in results if not r.passed and r.severity != "HIGH")
+
+    if failed == 0 and warnings == 0:
         click.secho(f"  All {passed} checks passed.", fg="green", bold=True)
-    else:
+    elif failed > 0 and warnings > 0:
+        click.secho(f"  {failed} check(s) failed, {warnings} warning(s), {passed} passed.", fg="red", bold=True)
+    elif failed > 0:
         click.secho(f"  {failed} check(s) failed, {passed} passed.", fg="red", bold=True)
+    else:
+        click.secho(f"  {warnings} warning(s), {passed} passed.", fg="yellow", bold=True)
     click.echo()
 
 
